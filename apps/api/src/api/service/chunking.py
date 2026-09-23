@@ -1,3 +1,7 @@
+
+
+
+
 def create_chunks_from_structure(structure: dict) -> list[dict]:
     """Traverse the section tree and return a chunk for each section with content."""
     chunks: list[dict] = []
