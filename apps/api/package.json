@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "uv run uvicorn api.main:app --reload --port 8000",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "format": "uv run ruff format src",
     "lint": "uv run ruff check .",
     "lint:fix": "uv run ruff check --fix ."

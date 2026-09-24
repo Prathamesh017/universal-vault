@@ -9,7 +9,7 @@ from api.constant import parser_prompt
 load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME")
+MODEL_NAME = os.getenv("TEXT_MODEL_NAME")
 API_URL = os.getenv("API_URL")
 
 
@@ -56,11 +56,6 @@ def parse_document(text: str) -> dict:
 
 
 # backend/src/chunker.py
-
-
-
-
-
 
 def fallback_parse(text: str) -> dict:
     """Simple regex-based parsing if LLM fails"""

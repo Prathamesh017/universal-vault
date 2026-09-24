@@ -13,6 +13,8 @@ dependencies = [
     "python-dotenv",
     "numpy",
     "google-genai>=2.25.0",
+    "sqlalchemy>=2",
+    "psycopg[binary]>=3.3.6",
 ]
 
 [project.scripts]

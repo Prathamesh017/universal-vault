@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Document(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     filename: str
     title: str
@@ -12,6 +13,9 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
     chunk_number: int
     text: str
     section: str | None = None
