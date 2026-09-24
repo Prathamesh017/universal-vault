@@ -6,6 +6,7 @@ from api.db.database import init_db
 from api.router.chunks import router as chunks_router
 from api.router.documents import router as documents_router
 from api.router.embed import router as embed_router
+from api.router.query import router as query_router
 from api.router.upload import router as upload_router
 
 
@@ -20,6 +21,7 @@ app.include_router(upload_router)
 app.include_router(documents_router)
 app.include_router(embed_router)
 app.include_router(chunks_router)
+app.include_router(query_router)
 
 
 def main() -> None:
