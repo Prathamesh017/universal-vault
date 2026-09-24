@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     filename TEXT NOT NULL,
     title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
     total_chunks INTEGER NOT NULL DEFAULT 0,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
 
 from api.service.handle_upload import process_upload
 
@@ -11,10 +11,17 @@ def hello():
 
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(
+    file: UploadFile = File(...),
+    description: str = Form(default=""),
+):
     contents = await file.read()
     text = contents.decode("utf-8")
-    result = process_upload(file.filename or "untitled.md", text)
+    result = process_upload(
+        file.filename or "untitled.md",
+        text,
+        description=description,
+    )
 
     return {
         "document": result["document"],

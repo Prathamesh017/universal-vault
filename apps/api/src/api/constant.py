@@ -38,3 +38,28 @@ EXAMPLE OUTPUT:
 
 NOW PARSE THIS DOCUMENT:
 """
+
+question_check_prompt = """You check if a user question should be answered using this document.
+
+Document description:
+{description}
+
+User question:
+{question}
+
+Rules:
+- isValid must be true only if BOTH are true:
+  1) The question is about this document's topic
+  2) The question is a clear, normal sentence/question (not just keywords like "install sync cloud")
+- reason must be a short message written for the end user, explaining why the question is accepted or rejected.
+  Examples:
+  - "Your question looks unrelated to this document, which is about CloudSync installation."
+  - "Please ask a full question instead of just keywords."
+  - "Your question looks valid for this document."
+
+Return ONLY JSON:
+{{
+  "isValid": true,
+  "reason": "message for the user"
+}}
+"""

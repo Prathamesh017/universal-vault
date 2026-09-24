@@ -16,6 +16,7 @@ class Document(BaseModel):
     id: int
     filename: str
     title: str
+    description: str = ""
     total_chunks: int = 0
     uploaded_at: datetime
 

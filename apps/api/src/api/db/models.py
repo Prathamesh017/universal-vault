@@ -13,6 +13,7 @@ class DocumentRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     filename: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     total_chunks: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

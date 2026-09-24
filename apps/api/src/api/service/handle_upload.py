@@ -8,13 +8,14 @@ from api.service.embedding import handle_embedding
 from api.service.parser import parse_document
 
 
-def process_upload(filename: str, text: str) -> dict:
+def process_upload(filename: str, text: str, description: str = "") -> dict:
     structure = parse_document(text)
 
     with SessionLocal() as db:
         doc_row = DocumentRow(
             filename=filename,
             title=structure.get("title") or filename,
+            description=description.strip(),
             total_chunks=0,
             uploaded_at=datetime.now(UTC),
         )
@@ -50,10 +51,7 @@ def process_upload(filename: str, text: str) -> dict:
         db.commit()
         db.refresh(doc_row)
 
-        saved_chunks = [
-            Chunk.model_validate(row)
-            for row in doc_row.chunks
-        ]
+        saved_chunks = [Chunk.model_validate(row) for row in doc_row.chunks]
 
         return {
             "document": Document.model_validate(doc_row),
