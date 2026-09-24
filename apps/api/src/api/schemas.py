@@ -10,15 +10,9 @@ class RetrievalMode(str, Enum):
     DETAILED = "detailed"
 
 
-RETRIEVAL_CONFIG = {
-    RetrievalMode.QUICK: {"top_k": 3, "threshold": 0.7},
-    RetrievalMode.BALANCED: {"top_k": 5, "threshold": 0.5},
-    RetrievalMode.DETAILED: {"top_k": 10, "threshold": 0.3},
-}
-
-
 class Document(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     id: int
     filename: str
     title: str

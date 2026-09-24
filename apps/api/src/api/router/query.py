@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from api.db.database import get_db
 from api.db.models import DocumentRow
-from api.schemas import QueryRequest, RETRIEVAL_CONFIG
-from api.service.retrieve import retrieve_chunks
+from api.schemas import QueryRequest
+from api.service.retrieve import RETRIEVAL_CONFIG, retrieve_chunks
 
 router = APIRouter(tags=["query"])
 

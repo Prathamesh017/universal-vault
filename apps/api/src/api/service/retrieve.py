@@ -3,8 +3,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.db.models import ChunkRow, DocumentRow
-from api.schemas import Chunk, RetrievedChunk, RetrievalMode, RETRIEVAL_CONFIG
+from api.schemas import Chunk, RetrievedChunk, RetrievalMode
 from api.service.embedding import embed_text
+
+# Higher threshold = stricter. Unrelated text often still scores ~0.4–0.6.
+RETRIEVAL_CONFIG = {
+    RetrievalMode.QUICK: {"top_k": 3, "threshold": 0.78},
+    RetrievalMode.BALANCED: {"top_k": 5, "threshold": 0.68},
+    RetrievalMode.DETAILED: {"top_k": 10, "threshold": 0.58},
+}
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -44,9 +51,6 @@ def retrieve_chunks(
             continue
 
         score = cosine_similarity(question_embedding, row.embedding)
-        if score < threshold:
-            continue
-
         scored.append(
             RetrievedChunk(
                 chunk=Chunk.model_validate(row),
@@ -54,5 +58,21 @@ def retrieve_chunks(
             )
         )
 
+    if not scored:
+        return []
+
     scored.sort(key=lambda item: item.score, reverse=True)
-    return scored[:top_k]
+    best = scored[0].score
+
+    # Nothing is relevant enough
+    if best < threshold:
+        return []
+
+    # Keep only chunks close to the best match, and above threshold
+    filtered = [
+        item
+        for item in scored
+        if item.score >= threshold and (best - item.score) <= 0.12
+    ]
+
+    return filtered[:top_k]
