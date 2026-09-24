@@ -29,16 +29,19 @@ def query_document(
         }
 
     config = RETRIEVAL_CONFIG[body.mode]
-    results = retrieve_chunks(db, document_id, body.question, body.mode)
+    result = retrieve_chunks(db, document_id, body.question, body.mode)
+    chunks = result["chunks"]
 
     return {
         "isValid": True,
         "message": check["reason"],
         "document_id": document_id,
         "question": body.question,
+        "query_used": result["query_used"],
+        "rewritten": result["rewritten"],
         "mode": body.mode,
         "top_k": config["top_k"],
         "threshold": config["threshold"],
-        "count": len(results),
-        "chunks": results,
+        "count": len(chunks),
+        "chunks": chunks,
     }

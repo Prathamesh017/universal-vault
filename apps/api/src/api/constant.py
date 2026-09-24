@@ -63,3 +63,18 @@ Return ONLY JSON:
   "reason": "message for the user"
 }}
 """
+
+query_rewrite_prompt = """Rewrite the user question into a better search query for retrieving document chunks.
+
+Original question:
+{question}
+
+Nearest document chunks (may be weakly related):
+{chunks}
+
+Rules:
+- Use vocabulary and topics from the chunks when helpful
+- Keep it as one clear search question
+- Do not answer the question
+- Return ONLY the rewritten question text, nothing else
+"""

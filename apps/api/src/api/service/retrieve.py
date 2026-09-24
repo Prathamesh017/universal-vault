@@ -1,12 +1,23 @@
+import os
+
 import numpy as np
+import requests
+from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from api.constant import query_rewrite_prompt
 from api.db.models import ChunkRow, DocumentRow
 from api.schemas import Chunk, RetrievedChunk, RetrievalMode
 from api.service.embedding import embed_text
 
-# Higher threshold = stricter. Unrelated text often still scores ~0.4–0.6.
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
+MODEL_NAME = os.getenv("TEXT_MODEL_NAME")
+API_URL = os.getenv("API_URL")
+NEAR_BAND = 0.12
+
 RETRIEVAL_CONFIG = {
     RetrievalMode.QUICK: {"top_k": 3, "threshold": 0.78},
     RetrievalMode.BALANCED: {"top_k": 5, "threshold": 0.68},
@@ -23,56 +34,104 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom)
 
 
+def score_chunks(db: Session, document_id: int, question: str) -> list[RetrievedChunk]:
+    question_embedding = embed_text(question)
+    rows = db.scalars(
+        select(ChunkRow).where(ChunkRow.document_id == document_id)
+    ).all()
+
+    scored = [
+        RetrievedChunk(
+            chunk=Chunk.model_validate(row),
+            score=round(cosine_similarity(question_embedding, row.embedding), 4),
+        )
+        for row in rows
+        if row.embedding
+    ]
+    scored.sort(key=lambda item: item.score, reverse=True)
+    return scored
+
+
+def pick_chunks(
+    scored: list[RetrievedChunk], top_k: int, min_score: float = 0.0
+) -> list[RetrievedChunk]:
+    """Keep top_k items within NEAR_BAND of the best, optionally above min_score."""
+    if not scored or scored[0].score < min_score:
+        return []
+    best = scored[0].score
+    return [
+        item
+        for item in scored
+        if item.score >= min_score and best - item.score <= NEAR_BAND
+    ][:top_k]
+
+
+def rewrite_query(question: str, nearest: list[RetrievedChunk]) -> str:
+    if not API_KEY or not API_URL or not nearest:
+        return question
+
+    chunks_text = "\n\n".join(
+        f"- ({item.score}) {item.chunk.breadcrumb}: {item.chunk.text[:400]}"
+        for item in nearest
+    )
+    try:
+        response = requests.post(
+            API_URL,
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MODEL_NAME,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": query_rewrite_prompt.format(
+                            question=question, chunks=chunks_text
+                        ),
+                    }
+                ],
+            },
+            timeout=60,
+        )
+        data = response.json()
+        if response.status_code != 200 or "error" in data:
+            raise RuntimeError(data)
+        text = data["choices"][0]["message"]["content"].strip().strip('"')
+        return text or question
+    except Exception as e:
+        print(f"Query rewrite failed: {e}")
+        return question
+
+
+def build_result(
+    chunks: list[RetrievedChunk], question: str, rewritten: bool
+) -> dict:
+    return {"chunks": chunks, "rewritten": rewritten, "query_used": question}
+
+
 def retrieve_chunks(
     db: Session,
     document_id: int,
     question: str,
     mode: RetrievalMode = RetrievalMode.BALANCED,
-) -> list[RetrievedChunk]:
-    document = db.get(DocumentRow, document_id)
-    if document is None:
-        return []
+) -> dict:
+    if db.get(DocumentRow, document_id) is None:
+        return build_result([], question, False)
 
-    config = RETRIEVAL_CONFIG[mode]
-    top_k = config["top_k"]
-    threshold = config["threshold"]
+    top_k = RETRIEVAL_CONFIG[mode]["top_k"]
+    threshold = RETRIEVAL_CONFIG[mode]["threshold"]
 
-    question_embedding = embed_text(question)
-
-    rows = db.scalars(
-        select(ChunkRow)
-        .where(ChunkRow.document_id == document_id)
-        .order_by(ChunkRow.chunk_number)
-    ).all()
-
-    scored: list[RetrievedChunk] = []
-    for row in rows:
-        if not row.embedding:
-            continue
-
-        score = cosine_similarity(question_embedding, row.embedding)
-        scored.append(
-            RetrievedChunk(
-                chunk=Chunk.model_validate(row),
-                score=round(score, 4),
-            )
-        )
+    scored = score_chunks(db, document_id, question)
+    strong = pick_chunks(scored, top_k, min_score=threshold)
+    if strong:
+        return build_result(strong, question, False)
 
     if not scored:
-        return []
+        return build_result([], question, False)
 
-    scored.sort(key=lambda item: item.score, reverse=True)
-    best = scored[0].score
-
-    # Nothing is relevant enough
-    if best < threshold:
-        return []
-
-    # Keep only chunks close to the best match, and above threshold
-    filtered = [
-        item
-        for item in scored
-        if item.score >= threshold and (best - item.score) <= 0.12
-    ]
-
-    return filtered[:top_k]
+    rewritten = rewrite_query(question, pick_chunks(scored, top_k))
+    retry = pick_chunks(
+        score_chunks(db, document_id, rewritten), top_k, min_score=threshold
+    )
+    return build_result(retry, rewritten, True)
