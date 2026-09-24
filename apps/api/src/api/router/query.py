@@ -3,11 +3,41 @@ from sqlalchemy.orm import Session
 
 from api.db.database import get_db
 from api.db.models import DocumentRow
-from api.schemas import QueryRequest
+from api.schemas import QueryRequest, RetrievalMode
+from api.service.answer import generate_answer
 from api.service.question_check import check_question
-from api.service.retrieve import RETRIEVAL_CONFIG, retrieve_chunks
+from api.service.retrieve import retrieve_chunks
 
 router = APIRouter(tags=["query"])
+
+
+def query_response(
+    *,
+    is_valid: bool,
+    found: bool,
+    message: str,
+    document_id: int | None = None,
+    question: str | None = None,
+    query_used: str | None = None,
+    rewritten: bool = False,
+    mode: RetrievalMode | None = None,
+) -> dict:
+    payload = {
+        "isValid": is_valid,
+        "found": found,
+        "message": message,
+    }
+    if document_id is not None:
+        payload.update(
+            {
+                "document_id": document_id,
+                "question": question,
+                "query_used": query_used,
+                "rewritten": rewritten,
+                "mode": mode,
+            }
+        )
+    return payload
 
 
 @router.post("/query/{document_id}")
@@ -22,26 +52,20 @@ def query_document(
 
     check = check_question(body.question, document.description or "")
     if not check["isValid"]:
-        return {
-            "isValid": False,
-            "message": check["reason"],
-            "chunks": [],
-        }
+        return query_response(
+            is_valid=False, found=False, message=check["reason"]
+        )
 
-    config = RETRIEVAL_CONFIG[body.mode]
-    result = retrieve_chunks(db, document_id, body.question, body.mode)
-    chunks = result["chunks"]
+    retrieval = retrieve_chunks(db, document_id, body.question, body.mode)
+    result = generate_answer(body.question, retrieval["chunks"])
 
-    return {
-        "isValid": True,
-        "message": check["reason"],
-        "document_id": document_id,
-        "question": body.question,
-        "query_used": result["query_used"],
-        "rewritten": result["rewritten"],
-        "mode": body.mode,
-        "top_k": config["top_k"],
-        "threshold": config["threshold"],
-        "count": len(chunks),
-        "chunks": chunks,
-    }
+    return query_response(
+        is_valid=True,
+        found=result["found"],
+        message=result["message"],
+        document_id=document_id,
+        question=body.question,
+        query_used=retrieval["query_used"],
+        rewritten=retrieval["rewritten"],
+        mode=body.mode,
+    )

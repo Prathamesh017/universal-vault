@@ -115,6 +115,7 @@ def retrieve_chunks(
     document_id: int,
     question: str,
     mode: RetrievalMode = RetrievalMode.BALANCED,
+    allow_rewrite: bool = True,
 ) -> dict:
     if db.get(DocumentRow, document_id) is None:
         return build_result([], question, False)
@@ -127,7 +128,7 @@ def retrieve_chunks(
     if strong:
         return build_result(strong, question, False)
 
-    if not scored:
+    if not scored or not allow_rewrite:
         return build_result([], question, False)
 
     rewritten = rewrite_query(question, pick_chunks(scored, top_k))

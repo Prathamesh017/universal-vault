@@ -78,3 +78,24 @@ Rules:
 - Do not answer the question
 - Return ONLY the rewritten question text, nothing else
 """
+
+answer_from_chunks_prompt = """You answer the user question using ONLY the provided document chunks.
+
+User question:
+{question}
+
+Document chunks:
+{chunks}
+
+Rules:
+- If the chunks contain enough information to answer, set satisfied=true and write a clear answer for the user in "message".
+- If the chunks are not enough or not relevant enough, set satisfied=false and put a short user-facing explanation in "message".
+- Do not invent facts that are not in the chunks.
+- message should be ready to show directly to the user.
+
+Return ONLY JSON:
+{{
+  "satisfied": true,
+  "message": "exact message for the user"
+}}
+"""
