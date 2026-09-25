@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,10 @@ class DocumentRow(Base):
     )
 
     chunks: Mapped[list["ChunkRow"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    conversation_history: Mapped[list["ConversationHistoryRow"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
     )
@@ -45,3 +49,28 @@ class ChunkRow(Base):
     embedding: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     document: Mapped["DocumentRow"] = relationship(back_populates="chunks")
+
+
+class ConversationHistoryRow(Base):
+    __tablename__ = "conversation_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", "question_normalized", name="uq_conversation_history_doc_question"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    question_normalized: Mapped[str] = mapped_column(Text, nullable=False)
+    question_embedding: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    document: Mapped["DocumentRow"] = relationship(back_populates="conversation_history")

@@ -5,6 +5,7 @@ from api.db.database import get_db
 from api.db.models import DocumentRow
 from api.schemas import QueryRequest, RetrievalMode
 from api.service.answer import generate_answer
+from api.service.cache import lookup_cache, save_cache
 from api.service.question_check import check_question
 from api.service.retrieve import retrieve_chunks
 
@@ -21,11 +22,13 @@ def query_response(
     query_used: str | None = None,
     rewritten: bool = False,
     mode: RetrievalMode | None = None,
+    cached: bool = False,
 ) -> dict:
     payload = {
         "isValid": is_valid,
         "found": found,
         "message": message,
+        "cached": cached,
     }
     if document_id is not None:
         payload.update(
@@ -50,6 +53,20 @@ def query_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    cached = lookup_cache(db, document_id, body.question)
+    if cached is not None:
+        return query_response(
+            is_valid=True,
+            found=True,
+            message=cached["answer"],
+            document_id=document_id,
+            question=body.question,
+            query_used=body.question,
+            rewritten=False,
+            mode=body.mode,
+            cached=True,
+        )
+
     check = check_question(body.question, document.description or "")
     if not check["isValid"]:
         return query_response(
@@ -58,6 +75,9 @@ def query_document(
 
     retrieval = retrieve_chunks(db, document_id, body.question, body.mode)
     result = generate_answer(body.question, retrieval["chunks"])
+
+    if result["found"]:
+        save_cache(db, document_id, body.question, result["message"])
 
     return query_response(
         is_valid=True,
@@ -68,4 +88,5 @@ def query_document(
         query_used=retrieval["query_used"],
         rewritten=retrieval["rewritten"],
         mode=body.mode,
+        cached=False,
     )
