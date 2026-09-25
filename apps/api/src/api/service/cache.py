@@ -5,16 +5,21 @@ from sqlalchemy.orm import Session
 
 from api.db.models import ConversationHistoryRow
 from api.service.embedding import embed_text
+from api.service import logging_service as logs
 from api.service.retrieve import cosine_similarity
 
 SEMANTIC_THRESHOLD = 0.90
+# Log near_miss when below threshold but still close
+NEAR_MISS_FLOOR = 0.85
 
 
 def normalize_question(question: str) -> str:
     return " ".join(question.strip().lower().split())
 
 
-def lookup_exact(db: Session, document_id: int, question: str) -> ConversationHistoryRow | None:
+def lookup_exact(
+    db: Session, document_id: int, question: str
+) -> ConversationHistoryRow | None:
     normalized = normalize_question(question)
     return db.scalars(
         select(ConversationHistoryRow).where(
@@ -26,18 +31,21 @@ def lookup_exact(db: Session, document_id: int, question: str) -> ConversationHi
 
 def lookup_semantic(
     db: Session, document_id: int, question: str
-) -> ConversationHistoryRow | None:
+) -> tuple[ConversationHistoryRow | None, float]:
+    """Returns (row_or_none, best_score)."""
     rows = db.scalars(
-        select(ConversationHistoryRow).where(ConversationHistoryRow.document_id == document_id)
+        select(ConversationHistoryRow).where(
+            ConversationHistoryRow.document_id == document_id
+        )
     ).all()
     if not rows:
-        return None
+        return None, 0.0
 
     try:
         question_embedding = embed_text(question)
     except Exception as e:
         print(f"Cache semantic embed failed: {e}")
-        return None
+        return None, 0.0
 
     best_row = None
     best_score = 0.0
@@ -50,19 +58,49 @@ def lookup_semantic(
             best_row = row
 
     if best_row is None or best_score < SEMANTIC_THRESHOLD:
-        return None
-    return best_row
+        return None, best_score
+    return best_row, best_score
 
 
 def lookup_cache(db: Session, document_id: int, question: str) -> dict | None:
-    """Exact match first, then semantic. Returns {answer, question} or None."""
+    """Exact match first, then semantic. Logs cache metrics."""
     exact = lookup_exact(db, document_id, question)
     if exact is not None:
+        logs.log_event(
+            db,
+            logs.CACHE_EXACT_HIT,
+            document_id=document_id,
+            question=question,
+        )
         return {"answer": exact.answer, "question": exact.question}
 
-    semantic = lookup_semantic(db, document_id, question)
+    semantic, score = lookup_semantic(db, document_id, question)
     if semantic is not None:
+        logs.log_event(
+            db,
+            logs.CACHE_SEMANTIC_HIT,
+            document_id=document_id,
+            question=question,
+            detail={"score": round(score, 4), "matched_question": semantic.question},
+        )
         return {"answer": semantic.answer, "question": semantic.question}
+
+    if NEAR_MISS_FLOOR <= score < SEMANTIC_THRESHOLD:
+        logs.log_event(
+            db,
+            logs.CACHE_NEAR_MISS,
+            document_id=document_id,
+            question=question,
+            detail={"score": round(score, 4), "threshold": SEMANTIC_THRESHOLD},
+        )
+    else:
+        logs.log_event(
+            db,
+            logs.CACHE_MISS,
+            document_id=document_id,
+            question=question,
+            detail={"score": round(score, 4)} if score else {},
+        )
 
     return None
 

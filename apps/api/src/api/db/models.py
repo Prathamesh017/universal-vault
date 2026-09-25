@@ -74,3 +74,20 @@ class ConversationHistoryRow(Base):
     )
 
     document: Mapped["DocumentRow"] = relationship(back_populates="conversation_history")
+
+
+class QueryLogRow(Base):
+    __tablename__ = "query_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    event: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )

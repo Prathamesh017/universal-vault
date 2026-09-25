@@ -6,6 +6,7 @@ from api.db.models import DocumentRow
 from api.schemas import QueryRequest, RetrievalMode
 from api.service.answer import generate_answer
 from api.service.cache import lookup_cache, save_cache
+from api.service import logging_service as logs
 from api.service.question_check import check_question
 from api.service.retrieve import retrieve_chunks
 
@@ -69,6 +70,13 @@ def query_document(
 
     check = check_question(body.question, document.description or "")
     if not check["isValid"]:
+        logs.log_event(
+            db,
+            logs.QUESTION_REJECTED,
+            document_id=document_id,
+            question=body.question,
+            detail={"reason": check["reason"]},
+        )
         return query_response(
             is_valid=False, found=False, message=check["reason"]
         )
@@ -78,6 +86,21 @@ def query_document(
 
     if result["found"]:
         save_cache(db, document_id, body.question, result["message"])
+        logs.log_event(
+            db,
+            logs.ANSWER_FOUND,
+            document_id=document_id,
+            question=body.question,
+            detail={"rewritten": retrieval["rewritten"]},
+        )
+    else:
+        logs.log_event(
+            db,
+            logs.ANSWER_NOT_FOUND,
+            document_id=document_id,
+            question=body.question,
+            detail={"rewritten": retrieval["rewritten"]},
+        )
 
     return query_response(
         is_valid=True,

@@ -10,6 +10,7 @@ from api.constant import query_rewrite_prompt
 from api.db.models import ChunkRow, DocumentRow
 from api.schemas import Chunk, RetrievedChunk, RetrievalMode
 from api.service.embedding import embed_text
+from api.service import logging_service as logs
 
 load_dotenv()
 
@@ -118,6 +119,13 @@ def retrieve_chunks(
     allow_rewrite: bool = True,
 ) -> dict:
     if db.get(DocumentRow, document_id) is None:
+        logs.log_event(
+            db,
+            logs.RETRIEVAL_NO_RESULTS,
+            document_id=document_id,
+            question=question,
+            detail={"reason": "document_missing"},
+        )
         return build_result([], question, False)
 
     top_k = RETRIEVAL_CONFIG[mode]["top_k"]
@@ -126,13 +134,60 @@ def retrieve_chunks(
     scored = score_chunks(db, document_id, question)
     strong = pick_chunks(scored, top_k, min_score=threshold)
     if strong:
+        logs.log_event(
+            db,
+            logs.RETRIEVAL_SUCCESS,
+            document_id=document_id,
+            question=question,
+            detail={"chunk_count": len(strong), "top_score": strong[0].score},
+        )
         return build_result(strong, question, False)
 
     if not scored or not allow_rewrite:
+        logs.log_event(
+            db,
+            logs.RETRIEVAL_NO_RESULTS,
+            document_id=document_id,
+            question=question,
+            detail={"reason": "no_strong_chunks"},
+        )
         return build_result([], question, False)
+
+    logs.log_event(
+        db,
+        logs.RETRIEVAL_REWRITE_NEEDED,
+        document_id=document_id,
+        question=question,
+        detail={
+            "top_score": scored[0].score if scored else None,
+            "threshold": threshold,
+        },
+    )
 
     rewritten = rewrite_query(question, pick_chunks(scored, top_k))
     retry = pick_chunks(
         score_chunks(db, document_id, rewritten), top_k, min_score=threshold
     )
+
+    if retry:
+        logs.log_event(
+            db,
+            logs.RETRIEVAL_REWRITE_SUCCESS,
+            document_id=document_id,
+            question=question,
+            detail={
+                "query_used": rewritten,
+                "chunk_count": len(retry),
+                "top_score": retry[0].score,
+            },
+        )
+    else:
+        logs.log_event(
+            db,
+            logs.RETRIEVAL_NO_RESULTS,
+            document_id=document_id,
+            question=question,
+            detail={"reason": "rewrite_failed", "query_used": rewritten},
+        )
+
     return build_result(retry, rewritten, True)
