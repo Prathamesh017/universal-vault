@@ -99,3 +99,36 @@ Return ONLY JSON:
   "message": "exact message for the user"
 }}
 """
+
+resolve_followup_prompt = """You handle a follow-up user message using recent conversation turns.
+
+Recent conversation (oldest first):
+{history}
+
+Current user message:
+{question}
+
+Choose ONE action:
+- "answer": prior turns already contain enough to reply. Put the user-facing reply in "message". Prefer this for "tell me more" / "elaborate" when prior answers already cover the topic.
+- "search": need NEW document details not in history. Put one clear standalone search question in "question".
+- "clarify": topic is unclear. Put a short clarification question in "message".
+
+Rules for "search":
+- "question" must be a full standalone question a stranger could search with.
+- Good: "What else should I know about CloudSync?" or "Explain CloudSync installation in more detail"
+- Bad: "tell me more" or "tell me more (about: ...)" or any vague follow-up phrasing
+- Never copy the follow-up wording into "question".
+
+Rules:
+- Prefer "answer" when history is enough (including expanding/rephrasing prior answers).
+- Use "search" only when the user clearly needs new facts beyond history.
+- Use "clarify" only when you cannot tell what they mean.
+- Do not invent document facts that are not in history when action is "answer".
+
+Return ONLY JSON:
+{{
+  "action": "answer",
+  "message": "reply for the user",
+  "question": ""
+}}
+"""

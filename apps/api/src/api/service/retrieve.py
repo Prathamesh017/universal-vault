@@ -11,6 +11,7 @@ from api.db.models import ChunkRow, DocumentRow
 from api.schemas import Chunk, RetrievedChunk, RetrievalMode
 from api.service.embedding import embed_text
 from api.service import logging_service as logs
+from api.service import ollama as ollama_llm
 
 load_dotenv()
 
@@ -68,14 +69,21 @@ def pick_chunks(
 
 
 def rewrite_query(question: str, nearest: list[RetrievedChunk]) -> str:
-    if not API_KEY or not API_URL or not nearest:
+    if not nearest:
         return question
 
-    chunks_text = "\n\n".join(
-        f"- ({item.score}) {item.chunk.breadcrumb}: {item.chunk.text[:400]}"
-        for item in nearest
+    prompt = query_rewrite_prompt.format(
+        question=question,
+        chunks="\n\n".join(
+            f"- ({item.score}) {item.chunk.breadcrumb}: {item.chunk.text[:400]}"
+            for item in nearest
+        ),
     )
+
     try:
+        if not API_KEY or not API_URL:
+            raise RuntimeError("Primary text LLM is not configured")
+
         response = requests.post(
             API_URL,
             headers={
@@ -84,14 +92,7 @@ def rewrite_query(question: str, nearest: list[RetrievedChunk]) -> str:
             },
             json={
                 "model": MODEL_NAME,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": query_rewrite_prompt.format(
-                            question=question, chunks=chunks_text
-                        ),
-                    }
-                ],
+                "messages": [{"role": "user", "content": prompt}],
             },
             timeout=60,
         )
@@ -101,8 +102,13 @@ def rewrite_query(question: str, nearest: list[RetrievedChunk]) -> str:
         text = data["choices"][0]["message"]["content"].strip().strip('"')
         return text or question
     except Exception as e:
-        print(f"Query rewrite failed: {e}")
-        return question
+        print(f"Rewrite LLM failed ({MODEL_NAME}), trying Ollama: {e}")
+        try:
+            text = ollama_llm.generate_text(prompt, timeout=60).strip().strip('"')
+            return text or question
+        except Exception as ollama_error:
+            print(f"Ollama rewrite failed: {ollama_error}")
+            return question
 
 
 def build_result(

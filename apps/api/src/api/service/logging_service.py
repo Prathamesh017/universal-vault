@@ -19,6 +19,10 @@ RETRIEVAL_NO_RESULTS = "retrieval.no_results"
 QUESTION_REJECTED = "pipeline.question_rejected"
 ANSWER_FOUND = "pipeline.answer_found"
 ANSWER_NOT_FOUND = "pipeline.answer_not_found"
+HISTORY_RESOLVED = "history.resolved"
+HISTORY_CLARIFY = "history.clarify"
+HISTORY_ANSWERED = "history.answered"
+
 
 
 def log_event(
@@ -76,6 +80,9 @@ def get_metrics(db: Session, document_id: int | None = None) -> dict:
             "question_rejected": count_event(counts, QUESTION_REJECTED),
             "answer_found": count_event(counts, ANSWER_FOUND),
             "answer_not_found": count_event(counts, ANSWER_NOT_FOUND),
+            "history_resolved": count_event(counts, HISTORY_RESOLVED),
+            "history_clarify": count_event(counts, HISTORY_CLARIFY),
+            "history_answered": count_event(counts, HISTORY_ANSWERED),
         },
     }
 

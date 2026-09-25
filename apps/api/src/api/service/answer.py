@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from api.constant import answer_from_chunks_prompt
 from api.schemas import RetrievedChunk
+from api.service import ollama as ollama_llm
 
 load_dotenv()
 
@@ -22,6 +23,18 @@ def format_chunks_for_llm(chunks: list[RetrievedChunk]) -> str:
         for item in chunks
     ]
     return "\n\n".join(parts)
+
+
+def parse_answer(raw: str) -> dict:
+    raw = raw.replace("```json", "").replace("```", "").strip()
+    parsed = json.loads(raw)
+    found = bool(parsed.get("satisfied", False))
+    message = str(parsed.get("message", "")).strip()
+    if not message:
+        message = (
+            "Here is what I found based on the document." if found else NO_MATCH
+        )
+    return {"found": found, "message": message if found else NO_MATCH}
 
 
 def generate_answer(question: str, chunks: list[RetrievedChunk]) -> dict:
@@ -54,18 +67,11 @@ def generate_answer(question: str, chunks: list[RetrievedChunk]) -> dict:
         if response.status_code != 200 or "error" in data:
             raise RuntimeError(data)
 
-        raw = data["choices"][0]["message"]["content"]
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        parsed = json.loads(raw)
-
-        found = bool(parsed.get("satisfied", False))
-        message = str(parsed.get("message", "")).strip()
-        if not message:
-            message = (
-                "Here is what I found based on the document." if found else NO_MATCH
-            )
-
-        return {"found": found, "message": message if found else NO_MATCH}
+        return parse_answer(data["choices"][0]["message"]["content"])
     except Exception as e:
-        print(f"Answer generation failed: {e}")
-        return {"found": False, "message": NO_MATCH}
+        print(f"Answer LLM failed ({MODEL_NAME}), trying Ollama: {e}")
+        try:
+            return parse_answer(ollama_llm.generate_text(prompt, timeout=90))
+        except Exception as ollama_error:
+            print(f"Ollama answer failed: {ollama_error}")
+            return {"found": False, "message": NO_MATCH}

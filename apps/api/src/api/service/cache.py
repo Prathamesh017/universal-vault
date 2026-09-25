@@ -128,6 +128,7 @@ def save_cache(db: Session, document_id: int, question: str, answer: str) -> Non
         existing.question = question
         existing.answer = answer
         existing.question_embedding = embedding
+        existing.created_at = datetime.now(timezone.utc)
     else:
         db.add(
             ConversationHistoryRow(
