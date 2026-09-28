@@ -9,6 +9,7 @@ from api.service.cache import lookup_cache, save_cache
 from api.service.history import prepare_question
 from api.service import logging_service as logs
 from api.service.question_check import check_question
+from api.service.rate_limit import rate_limit
 from api.service.retrieve import (
     QUESTION_TYPE_MODE,
     classify_question_rule_based,
@@ -51,7 +52,7 @@ def query_response(
     return payload
 
 
-@router.post("/query/{document_id}")
+@router.post("/query/{document_id}", dependencies=[Depends(rate_limit)])
 def query_document(
     document_id: int,
     body: QueryRequest,
