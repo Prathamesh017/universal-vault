@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 
 from api.constant import query_rewrite_prompt
 from api.db.models import ChunkRow, DocumentRow
-from api.schemas import Chunk, RetrievedChunk, RetrievalMode
-from api.service.answer import MODEL_NAME, call_main_model
+from api.schemas import Chunk, QuestionType, RetrievedChunk, RetrievalMode
+from api.service.answer import MODEL_NAME, call_main_model, has_keyword
 from api.service.embedding import embed_text
 from api.service import logging_service as logs
 from api.service import ollama as ollama_llm
@@ -17,6 +17,32 @@ RETRIEVAL_CONFIG = {
     RetrievalMode.BALANCED: {"top_k": 5, "threshold": 0.68},
     RetrievalMode.DETAILED: {"top_k": 10, "threshold": 0.58},
 }
+
+QUESTION_TYPE_MODE = {
+    QuestionType.DEFINITION: RetrievalMode.QUICK,
+    QuestionType.FACTUAL: RetrievalMode.QUICK,
+    QuestionType.HOW_TO: RetrievalMode.BALANCED,
+    QuestionType.COMPARISON: RetrievalMode.DETAILED,
+    QuestionType.TROUBLESHOOTING: RetrievalMode.DETAILED,
+}
+
+
+def classify_question_rule_based(question: str) -> QuestionType:
+    q_lower = question.lower()
+
+    if has_keyword(q_lower, ["what is", "define", "explain", "what does"]):
+        return QuestionType.DEFINITION
+
+    if has_keyword(q_lower, ["how do i", "how to", "steps", "install", "set up"]):
+        return QuestionType.HOW_TO
+
+    if has_keyword(q_lower, ["vs", "compared to", "difference", "better"]):
+        return QuestionType.COMPARISON
+
+    if has_keyword(q_lower, ["why doesn't", "error", "problem", "fix", "broken"]):
+        return QuestionType.TROUBLESHOOTING
+
+    return QuestionType.FACTUAL
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

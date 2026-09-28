@@ -3,13 +3,17 @@ from sqlalchemy.orm import Session
 
 from api.db.database import get_db
 from api.db.models import DocumentRow
-from api.schemas import QueryRequest, RetrievalMode
+from api.schemas import QueryRequest, QuestionType, RetrievalMode
 from api.service.answer import generate_answer
 from api.service.cache import lookup_cache, save_cache
 from api.service.history import prepare_question
 from api.service import logging_service as logs
 from api.service.question_check import check_question
-from api.service.retrieve import retrieve_chunks
+from api.service.retrieve import (
+    QUESTION_TYPE_MODE,
+    classify_question_rule_based,
+    retrieve_chunks,
+)
 
 router = APIRouter(tags=["query"])
 
@@ -23,6 +27,7 @@ def query_response(
     question: str | None = None,
     query_used: str | None = None,
     rewritten: bool = False,
+    question_type: QuestionType | None = None,
     mode: RetrievalMode | None = None,
     cached: bool = False,
 ) -> dict:
@@ -39,6 +44,7 @@ def query_response(
                 "question": question,
                 "query_used": query_used,
                 "rewritten": rewritten,
+                "question_type": question_type,
                 "mode": mode,
             }
         )
@@ -65,10 +71,11 @@ def query_document(
             question=body.question,
             query_used=body.question,
             rewritten=False,
-            mode=body.mode,
             cached=False,
         )
     question = prepared["question"]
+    question_type = classify_question_rule_based(question)
+    mode = QUESTION_TYPE_MODE[question_type]
 
     cached = lookup_cache(db, document_id, question)
     if cached is not None:
@@ -80,7 +87,8 @@ def query_document(
             question=body.question,
             query_used=question,
             rewritten=question != body.question,
-            mode=body.mode,
+            question_type=question_type,
+        mode=mode,
             cached=True,
         )
 
@@ -97,7 +105,7 @@ def query_document(
             is_valid=False, found=False, message=check["reason"]
         )
 
-    retrieval = retrieve_chunks(db, document_id, question, body.mode)
+    retrieval = retrieve_chunks(db, document_id, question, mode)
     result = generate_answer(question, retrieval["chunks"])
 
     if result["found"]:
@@ -126,6 +134,7 @@ def query_document(
         question=body.question,
         query_used=retrieval["query_used"],
         rewritten=retrieval["rewritten"],
-        mode=body.mode,
+        question_type=question_type,
+        mode=mode,
         cached=False,
     )

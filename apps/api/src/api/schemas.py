@@ -10,6 +10,14 @@ class RetrievalMode(str, Enum):
     DETAILED = "detailed"
 
 
+class QuestionType(str, Enum):
+    DEFINITION = "definition"
+    HOW_TO = "how_to"
+    COMPARISON = "comparison"
+    TROUBLESHOOTING = "troubleshooting"
+    FACTUAL = "factual"
+
+
 class Document(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,7 +47,6 @@ class Chunk(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str
-    mode: RetrievalMode = RetrievalMode.BALANCED
 
 
 class RetrievedChunk(BaseModel):
