@@ -1,5 +1,21 @@
 # Universal Vault
 
+You upload a document (like a manual), and the system learns about it.  Then you ask it questions, and it answers by pulling information from that document.
+
+**Example:**
+- Upload: CloudSync Manual PDF
+- Ask: "How do I install CloudSync?"
+- Get: "Download from... then run..."
+
+That's it! The answers always come from your document, not the internet.
+
+## Why is this useful?
+
+- **No hallucinations**: It only answers from what's in your document
+- **Always up-to-date**: Add new documents anytime
+- **Works offline**: No internet needed (with local setup)
+
+
 A RAG (Retrieval-Augmented Generation) API: upload a Markdown document, and ask questions about it. Answers are generated only from the document's content.
 
 The API is built with FastAPI, stores documents, chunks, embeddings, cache, and logs in Postgres, and works with any OpenAI-compatible LLM. A local Ollama model answers simple questions and acts as a fallback when the main model fails.
