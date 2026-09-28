@@ -1,23 +1,15 @@
-import os
-
 import numpy as np
-import requests
-from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.constant import query_rewrite_prompt
 from api.db.models import ChunkRow, DocumentRow
 from api.schemas import Chunk, RetrievedChunk, RetrievalMode
+from api.service.answer import MODEL_NAME, call_main_model
 from api.service.embedding import embed_text
 from api.service import logging_service as logs
 from api.service import ollama as ollama_llm
 
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
-MODEL_NAME = os.getenv("TEXT_MODEL_NAME")
-API_URL = os.getenv("API_URL")
 NEAR_BAND = 0.12
 
 RETRIEVAL_CONFIG = {
@@ -81,25 +73,7 @@ def rewrite_query(question: str, nearest: list[RetrievedChunk]) -> str:
     )
 
     try:
-        if not API_KEY or not API_URL:
-            raise RuntimeError("Primary text LLM is not configured")
-
-        response = requests.post(
-            API_URL,
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": MODEL_NAME,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=60,
-        )
-        data = response.json()
-        if response.status_code != 200 or "error" in data:
-            raise RuntimeError(data)
-        text = data["choices"][0]["message"]["content"].strip().strip('"')
+        text = call_main_model(prompt, timeout=60).strip().strip('"')
         return text or question
     except Exception as e:
         print(f"Rewrite LLM failed ({MODEL_NAME}), trying Ollama: {e}")

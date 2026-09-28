@@ -6,6 +6,7 @@ from api.db.models import DocumentRow
 from api.schemas import QueryRequest, RetrievalMode
 from api.service.answer import generate_answer
 from api.service.cache import lookup_cache, save_cache
+from api.service.history import prepare_question
 from api.service import logging_service as logs
 from api.service.question_check import check_question
 from api.service.retrieve import retrieve_chunks
@@ -54,7 +55,22 @@ def query_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    cached = lookup_cache(db, document_id, body.question)
+    prepared = prepare_question(db, document_id, body.question)
+    if prepared["action"] in ("answer", "clarify"):
+        return query_response(
+            is_valid=True,
+            found=prepared["action"] == "answer",
+            message=prepared["message"],
+            document_id=document_id,
+            question=body.question,
+            query_used=body.question,
+            rewritten=False,
+            mode=body.mode,
+            cached=False,
+        )
+    question = prepared["question"]
+
+    cached = lookup_cache(db, document_id, question)
     if cached is not None:
         return query_response(
             is_valid=True,
@@ -62,13 +78,13 @@ def query_document(
             message=cached["answer"],
             document_id=document_id,
             question=body.question,
-            query_used=body.question,
-            rewritten=False,
+            query_used=question,
+            rewritten=question != body.question,
             mode=body.mode,
             cached=True,
         )
 
-    check = check_question(body.question, document.description or "")
+    check = check_question(question, document.description or "")
     if not check["isValid"]:
         logs.log_event(
             db,
@@ -81,11 +97,11 @@ def query_document(
             is_valid=False, found=False, message=check["reason"]
         )
 
-    retrieval = retrieve_chunks(db, document_id, body.question, body.mode)
-    result = generate_answer(body.question, retrieval["chunks"])
+    retrieval = retrieve_chunks(db, document_id, question, body.mode)
+    result = generate_answer(question, retrieval["chunks"])
 
     if result["found"]:
-        save_cache(db, document_id, body.question, result["message"])
+        save_cache(db, document_id, question, result["message"])
         logs.log_event(
             db,
             logs.ANSWER_FOUND,

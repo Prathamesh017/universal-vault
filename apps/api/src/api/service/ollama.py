@@ -1,4 +1,4 @@
-"""Local Ollama text helper — fallback when the primary text LLM fails."""
+"""Local Ollama text helper — answers simple questions and is the fallback for the main LLM."""
 
 import os
 

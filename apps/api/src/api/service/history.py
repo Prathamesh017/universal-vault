@@ -1,21 +1,14 @@
 import json
-import os
 import re
 
-import requests
-from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.constant import resolve_followup_prompt
 from api.db.models import ConversationHistoryRow
+from api.service.answer import MODEL_NAME, call_main_model
 from api.service import logging_service as logs
-
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
-MODEL_NAME = os.getenv("TEXT_MODEL_NAME")
-API_URL = os.getenv("API_URL")
+from api.service import ollama as ollama_llm
 
 HISTORY_LIMIT = 5
 DEFAULT_CLARIFICATION = "What topic were you referring to?"
@@ -107,32 +100,20 @@ def prepare_question(db: Session, document_id: int, question: str) -> dict:
     message = ""
     search_question = fallback_search_question(turns)
 
-    if API_KEY and API_URL:
-        try:
-            response = requests.post(
-                API_URL,
-                headers={
-                    "Authorization": f"Bearer {API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": MODEL_NAME,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": resolve_followup_prompt.format(
-                                history=history, question=question
-                            ),
-                        }
-                    ],
-                },
-                timeout=60,
-            )
-            data = response.json()
-            if response.status_code != 200 or "error" in data:
-                raise RuntimeError(data)
+    prompt = resolve_followup_prompt.format(history=history, question=question)
+    raw = None
 
-            raw = data["choices"][0]["message"]["content"]
+    try:
+        raw = call_main_model(prompt, timeout=60)
+    except Exception as e:
+        print(f"Resolve follow-up LLM failed ({MODEL_NAME}), trying Ollama: {e}")
+        try:
+            raw = ollama_llm.generate_text(prompt, timeout=60)
+        except Exception as ollama_error:
+            print(f"Ollama resolve follow-up failed: {ollama_error}")
+
+    if raw:
+        try:
             raw = raw.replace("```json", "").replace("```", "").strip()
             parsed = json.loads(raw)
 
@@ -150,7 +131,7 @@ def prepare_question(db: Session, document_id: int, question: str) -> dict:
                     else fallback_search_question(turns)
                 )
         except Exception as e:
-            print(f"Resolve follow-up failed: {e}")
+            print(f"Resolve follow-up parse failed: {e}")
             action = "search"
             search_question = fallback_search_question(turns)
 
