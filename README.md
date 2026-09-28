@@ -4,17 +4,7 @@ A RAG (Retrieval-Augmented Generation) API: upload a Markdown document, and ask 
 
 The API is built with FastAPI, stores documents, chunks, embeddings, cache, and logs in Postgres, and works with any OpenAI-compatible LLM. A local Ollama model answers simple questions and acts as a fallback when the main model fails.
 
-## Features
-
-- Markdown upload with heading-aware chunking and embeddings
-- Retrieval with cosine similarity, per-question-type thresholds, and one-shot query rewrite
-- Question validity check (rejects off-topic or keyword-only questions)
-- Rule-based question classification (definition / how-to / comparison / troubleshooting / factual) that picks the retrieval mode
-- Model routing: simple questions → Ollama first; everything else → main model with Ollama fallback
-- Q&A cache (exact + semantic match)
-- Follow-up handling ("tell me more") using the last 5 Q&As
-- Query event logging with a `/metrics` endpoint
-- Per-IP rate limiting (60 requests/minute, 1000/day) on the query endpoint
+See [architecture.md](architecture.md) for the feature list, query flow diagram, how each step works, and current limitations.
 
 ## Repository layout
 
@@ -247,16 +237,6 @@ All migration files use `IF NOT EXISTS`, so running them on a fresh database (wh
 | `rewritten` | `query_used` differs from what the user typed |
 | `question_type`, `mode` | Rule-based classification and the retrieval mode it selected |
 
-## Query flow
-
-1. **Prepare question**: detect follow-ups ("tell me more"); using the last 5 Q&As, either answer from history, ask the user to clarify, or rewrite into a standalone question
-2. **Classify**: keyword rules pick a question type → retrieval mode (quick / balanced / detailed)
-3. **Cache lookup**: exact normalized match, then semantic match (≥ 0.90 similarity)
-4. **Question check**: LLM verifies the question fits the document and is a real question
-5. **Retrieve**: embed the question, score chunks by cosine similarity, keep top chunks above the mode's threshold; if none, rewrite the query once and retry
-6. **Answer**: simple questions → Ollama then main model; others → main model then Ollama; the answer must be supported by the chunks
-7. **Save + log**: found answers are cached; every step logs an event for `/metrics`
-
 ## Troubleshooting
 
 | Problem | Fix |
@@ -286,17 +266,4 @@ From `apps/api`:
 | `pnpm db:migrate` | Apply pending migrations |
 | `pnpm dev` | Start the API with reload |
 | `pnpm lint` / `pnpm lint:fix` | Lint with ruff |
-
-
-
-## Limitations
-
-This is a learning/portfolio project focused on understanding how a RAG system works end to end, so some production concerns are intentionally out of scope.
-
-- **No frontend yet.** The main goal was the RAG pipeline itself; the API is used through Swagger (`/docs`) or `curl`.
-- **Markdown only.** Chunking relies on Markdown headings. Other formats (PDF, DOCX, HTML) could be supported by converting them to Markdown before upload.
-- **pgvector isn't used as expected yet.** Embeddings are stored as JSONB in Postgres and scored with cosine similarity in Python. This is fine for a few documents, but pgvector with an index would move the search into Postgres and scale much better.
-- **Embedding search only.** There's no keyword (full-text/BM25) search alongside it, so exact terms like error codes or version numbers can be missed.
-- **One document per query.** Questions can't span multiple documents.
-- **Shared history per document.** Follow-ups use the last 5 Q&As for the document, not per user or session, so everyone querying the same document shares that context.
 
